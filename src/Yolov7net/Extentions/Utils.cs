@@ -1,7 +1,8 @@
 ﻿using Microsoft.ML.OnnxRuntime.Tensors;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Processing.Processors.Transforms;
 
 namespace Yolov7net.Extentions
 {
@@ -24,12 +25,8 @@ namespace Yolov7net.Extentions
             return result;
         }
 
-        public static Bitmap ResizeImage(Image image,int target_width,int target_height)
+        public static Image ResizeImage(Image image, int target_width, int target_height)
         {
-            PixelFormat format = image.PixelFormat;
-
-            var output = new Bitmap(target_width, target_height, format);
-
             var (w, h) = (image.Width, image.Height); // image width and height
             var (xRatio, yRatio) = (target_width / (float)w, target_height / (float)h); // x, y ratios
             var ratio = Math.Min(xRatio, yRatio); // ratio = resized / original
@@ -37,122 +34,38 @@ namespace Yolov7net.Extentions
             var (x, y) = ((target_width / 2) - (width / 2), (target_height / 2) - (height / 2)); // roi x and y coordinates
             var roi = new Rectangle(x, y, width, height); // region of interest
 
-            using (var graphics = Graphics.FromImage(output))
+            var options = new ResizeOptions
             {
-                graphics.Clear(Color.FromArgb(0, 0, 0, 0)); // clear canvas
-
-                graphics.SmoothingMode = SmoothingMode.None; // no smoothing
-                graphics.InterpolationMode = InterpolationMode.Bilinear; // bilinear interpolation
-                graphics.PixelOffsetMode = PixelOffsetMode.Half; // half pixel offset
-
-                graphics.DrawImage(image, roi); // draw scaled
-            }
-
-            return output;
+                Size = new Size(target_width, target_height),
+                TargetRectangle = roi,
+                Sampler = KnownResamplers.Bicubic
+            };
+            return image.Clone(i => i.Resize(options));
         }
 
-        public static Tensor<float> ExtractPixels(Bitmap image)
+        public static Tensor<float> ExtractPixels(Image input)
         {
-            var bitmap = (Bitmap)image;
+            using var image = input.CloneAs<Rgb24>();
+            var rectangle = new Rectangle(0, 0, image.Width, image.Height);
+            int bytesPerPixel = image.PixelType.BitsPerPixel / 8;
 
-            var rectangle = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
-            BitmapData bitmapData = bitmap.LockBits(rectangle, ImageLockMode.ReadOnly, bitmap.PixelFormat);
-            int bytesPerPixel = Image.GetPixelFormatSize(bitmap.PixelFormat) / 8;
+            var tensor = new DenseTensor<float>(new[] { 1, 3, image.Height, image.Width });
 
-            var tensor = new DenseTensor<float>(new[] { 1, 3, bitmap.Height, bitmap.Width });
-
-            unsafe // speed up conversion by direct work with memory
+            image.ProcessPixelRows(accessor =>
             {
-                Parallel.For(0, bitmapData.Height, (y) =>
+                for (int y = 0; y < accessor.Height; y++)
                 {
-                    byte* row = (byte*)bitmapData.Scan0 + (y * bitmapData.Stride);
-
-                    Parallel.For(0, bitmapData.Width, (x) =>
+                    Span<Rgb24> pixelSpan = accessor.GetRowSpan(y);
+                    for (int x = 0; x < accessor.Width; x++)
                     {
-                        tensor[0, 0, y, x] = row[x * bytesPerPixel + 2] / 255.0F; // r
-                        tensor[0, 1, y, x] = row[x * bytesPerPixel + 1] / 255.0F; // g
-                        tensor[0, 2, y, x] = row[x * bytesPerPixel + 0] / 255.0F; // b
-                    });
-                });
-
-                bitmap.UnlockBits(bitmapData);
-            }
-
-            return tensor;
-        }
-
-        //https://github.com/ivilson/Yolov7net/issues/17
-        public static Tensor<float> ExtractPixels2(Bitmap bitmap)
-        {
-            int pixelCount = bitmap.Width * bitmap.Height;
-            var rectangle = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
-            var tensor = new DenseTensor<float>(new[] { 1, 3, bitmap.Height, bitmap.Width });
-            Span<byte> data;
-
-            BitmapData bitmapData;
-            if (bitmap.PixelFormat == PixelFormat.Format24bppRgb && bitmap.Width % 4 == 0)
-            {
-                bitmapData = bitmap.LockBits(rectangle, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
-
-                unsafe
-                {
-                    data = new Span<byte>((void*)bitmapData.Scan0, bitmapData.Height * bitmapData.Stride);
+                        tensor[0, 0, y, x] = pixelSpan[x].R / 255f;
+                        tensor[0, 1, y, x] = pixelSpan[x].G / 255f;
+                        tensor[0, 2, y, x] = pixelSpan[x].B / 255f;
+                    }
                 }
-
-                ExtractPixelsRgb(tensor, data, pixelCount);
-            }
-            else
-            {
-                // force convert to 32 bit PArgb
-                bitmapData = bitmap.LockBits(rectangle, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
-
-                unsafe
-                {
-                    data = new Span<byte>((void*)bitmapData.Scan0, bitmapData.Height * bitmapData.Stride);
-                }
-
-                ExtractPixelsArgb(tensor, data, pixelCount);
-            }
-
-            bitmap.UnlockBits(bitmapData);
-
+            });
+            
             return tensor;
-        }
-
-        public static void ExtractPixelsArgb(DenseTensor<float> tensor, Span<byte> data, int pixelCount)
-        {
-            var spanR = tensor.Buffer.Span;
-            var spanG = spanR.Slice(pixelCount);
-            var spanB = spanG.Slice(pixelCount);
-
-            int sidx = 0;
-            int didx = 0;
-            for (int i = 0; i < pixelCount; i++)
-            {
-                spanR[didx] = data[sidx + 2] / 255.0F;
-                spanG[didx] = data[sidx + 1] / 255.0F;
-                spanB[didx] = data[sidx] / 255.0F;
-                didx++;
-                sidx += 4;
-            }
-        }
-
-        public static void ExtractPixelsRgb(DenseTensor<float> tensor, Span<byte> data, int pixelCount)
-        {
-            var spanR = tensor.Buffer.Span;
-            var spanG = spanR.Slice(pixelCount);
-            var spanB = spanG.Slice(pixelCount);
-
-            int sidx = 0;
-            int didx = 0;
-            for (int i = 0; i < pixelCount; i++)
-            {
-                spanR[didx] = data[sidx + 2] / 255.0F;
-                spanG[didx] = data[sidx + 1] / 255.0F;
-                spanB[didx] = data[sidx] / 255.0F;
-                didx++;
-                sidx += 3;
-            }
         }
 
         public static float Clamp(float value, float min, float max)

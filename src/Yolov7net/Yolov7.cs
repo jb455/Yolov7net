@@ -1,7 +1,8 @@
 ﻿using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
+using SixLabors.ImageSharp.Memory;
+using SixLabors.ImageSharp.Processing;
 using System.Collections.Concurrent;
-using System.Drawing;
 using Yolov7net.Extentions;
 using Yolov7net.Models;
 
@@ -89,7 +90,7 @@ namespace Yolov7net
 
         private IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Inference(Image img)
         {
-            Bitmap resized;
+            Image resized;
 
             if (img.Width != _model.Width || img.Height != _model.Height)
             {
@@ -97,12 +98,12 @@ namespace Yolov7net
             }
             else
             {
-                resized = img as Bitmap ?? new Bitmap(img);
+                resized = img.CloneAs<Rgb24>();
             }
 
             var inputs = new[] // add image as onnx input
             {
-                NamedOnnxValue.CreateFromTensor("images", Utils.ExtractPixels2(resized))
+                NamedOnnxValue.CreateFromTensor("images", Utils.ExtractPixels(resized))
             };
 
             return _inferenceSession.Run(inputs, _model.Outputs); // run inference

@@ -1,5 +1,4 @@
-﻿using System.Drawing;
-
+﻿
 namespace Yolov7net.Extentions
 {
     public static class RectangleExtensions

@@ -1,6 +1,6 @@
 ﻿using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
-using System.Drawing;
+using SixLabors.ImageSharp;
 using Yolov7net;
 using Yolov7net.Extentions;
 
@@ -11,7 +11,7 @@ public class YoloDetector
     private readonly Yolov7 _yolov7 = new Yolov7("./assets/yolov7-tiny.onnx",true);
     private readonly Yolov5 _yolov5 = new Yolov5("./assets/yolov7-tiny_640x640.onnx",true);
     private readonly Yolov8 _yolov8 = new Yolov8("./assets/yolov8n.onnx", true);
-    private readonly Image _image = Image.FromFile("Assets/2dog.jpg");
+    private readonly Image _image = Image.Load("Assets/2dog.jpg");
     private readonly Image _image640;
     
     public YoloDetector()

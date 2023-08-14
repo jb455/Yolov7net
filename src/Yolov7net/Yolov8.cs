@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Drawing;
 using Yolov7net.Extentions;
 using Yolov7net.Models;
 using Microsoft.ML.OnnxRuntime.Tensors;
@@ -101,7 +100,7 @@ namespace Yolov7net
 
         private IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Inference(Image img)
         {
-            Bitmap resized;
+            Image resized;
 
             if (img.Width != _model.Width || img.Height != _model.Height)
             {
@@ -109,12 +108,12 @@ namespace Yolov7net
             }
             else
             {
-                resized = img as Bitmap ?? new Bitmap(img);
+                resized = img.CloneAs<Rgb24>();
             }
 
             var inputs = new[]
             {
-                NamedOnnxValue.CreateFromTensor("images", Utils.ExtractPixels2(resized))
+                NamedOnnxValue.CreateFromTensor("images", Utils.ExtractPixels(resized))
             };
 
             return _inferenceSession.Run(inputs, _model.Outputs);
@@ -284,7 +283,7 @@ namespace Yolov7net
 
         private void prepare_input(Image img)
         {
-            Bitmap bmp = Utils.ResizeImage(img, _model.Width, _model.Height);
+            Image bmp = Utils.ResizeImage(img, _model.Width, _model.Height);
 
         }
 

@@ -1,5 +1,5 @@
+using SixLabors.ImageSharp;
 using System.Diagnostics;
-using System.Drawing;
 using Yolov7net.Extentions;
 
 
@@ -21,7 +21,7 @@ namespace Yolov7net.test
             int i = 0;
             foreach (var tuple in testFiles)
             {
-                var image = Image.FromFile("Assets/" + tuple.fileName);
+                var image = Image.Load("Assets/" + tuple.fileName);
                 array[i++] = (image, tuple.label);
 
                 // resized image should give the same result
@@ -35,7 +35,7 @@ namespace Yolov7net.test
         [Fact]
         public void TestYolov7()
         {
-            using var yolo = new Yolov7("./assets/yolov7-tiny.onnx", true); //yolov7 模型,不需要 nms 操作
+            using var yolo = new Yolov7("./assets/yolov7-tiny.onnx", false); //yolov7 模型,不需要 nms 操作
             
             // setup labels of onnx model 
             yolo.SetupYoloDefaultLabels();   // use custom trained model should use your labels like: yolo.SetupLabels(string[] labels)
@@ -113,7 +113,7 @@ namespace Yolov7net.test
             var sw = Stopwatch.StartNew();
             for(int i = 0; i < 10; i++)
             {
-                using var image = Image.FromFile("Assets/demo.jpg");
+                using var image = Image.Load("Assets/demo.jpg");
                 var ret = yolo.Predict(image);
             }
         
